@@ -1,0 +1,8 @@
+flask==2.3.3
+finnhub-python==2.4.19
+gunicorn==23.0.0
+python-dotenv==1.0.1
+requests>=2.31.0
+nsepy==0.8
+pandas==2.2.1
+nsetools==1.0.2
