@@ -37,11 +37,11 @@
             position: absolute;
             user-select: none;
             transition: box-shadow 0.3s;
-            resize: both; /* Enable resizing */
-            overflow: auto; /* Required for resize to work */
-            min-width: 200px; /* Minimum size */
+            resize: both;
+            overflow: auto;
+            min-width: 200px;
             min-height: 100px;
-            max-width: 90vw; /* Limit to viewport */
+            max-width: 90vw;
             max-height: 90vh;
         }
 
@@ -72,7 +72,7 @@
         .quick-actions {
             width: 280px;
             left: 0;
-            top: 350px; /* Position below sidebar-left */
+            top: 350px;
         }
 
         .table-container {
@@ -198,6 +198,19 @@
             color: #007aff;
         }
 
+        tr {
+            transition: background 0.2s;
+        }
+
+        tr.draggable {
+            cursor: move;
+        }
+
+        tr.dragging {
+            opacity: 0.5;
+            background: rgba(0, 122, 255, 0.1);
+        }
+
         tr:last-child td {
             border-bottom: none;
         }
@@ -269,7 +282,7 @@
                     <th>Action</th>
                 </tr>
                 {% for inv in investments %}
-                <tr>
+                <tr class="draggable" data-id="{{ inv.id }}">
                     <td>{{ inv.instrument }}</td>
                     <td>{{ inv.units|default(0)|round(2) }}</td>
                     <td>{{ inv.currency }}{{ inv.current_price|default(0)|round(2) }}</td>
@@ -301,13 +314,21 @@
     </div>
 
     <script>
-        // Draggable functionality
+        // Draggable card functionality with position and size saving
         function makeDraggable(card) {
             const handle = card.querySelector('.drag-handle');
-            let posX = parseInt(card.style.left) || 0;
-            let posY = parseInt(card.style.top) || 0;
+            let posX = parseInt(localStorage.getItem(`${card.id}-left`)) || parseInt(card.style.left) || 0;
+            let posY = parseInt(localStorage.getItem(`${card.id}-top`)) || parseInt(card.style.top) || 0;
+            let width = parseInt(localStorage.getItem(`${card.id}-width`)) || parseInt(card.style.width) || card.offsetWidth;
+            let height = parseInt(localStorage.getItem(`${card.id}-height`)) || parseInt(card.style.height) || card.offsetHeight;
             let isDragging = false;
             let startX, startY;
+
+            // Apply saved position and size
+            card.style.left = posX + 'px';
+            card.style.top = posY + 'px';
+            card.style.width = width + 'px';
+            card.style.height = height + 'px';
 
             handle.addEventListener('mousedown', (e) => {
                 e.preventDefault();
@@ -332,21 +353,96 @@
                 if (isDragging) {
                     isDragging = false;
                     card.classList.remove('dragging');
+                    localStorage.setItem(`${card.id}-left`, posX);
+                    localStorage.setItem(`${card.id}-top`, posY);
                     console.log('Drag stopped:', card.id, 'at', posX, posY);
+                }
+                // Save size after dragging or resizing
+                width = card.offsetWidth;
+                height = card.offsetHeight;
+                localStorage.setItem(`${card.id}-width`, width);
+                localStorage.setItem(`${card.id}-height`, height);
+                console.log('Size saved:', card.id, 'width:', width, 'height:', height);
+            });
+
+            // Save size on resize (debounced to avoid excessive updates)
+            let resizeTimeout;
+            card.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    width = card.offsetWidth;
+                    height = card.offsetHeight;
+                    localStorage.setItem(`${card.id}-width`, width);
+                    localStorage.setItem(`${card.id}-height`, height);
+                    console.log('Resize saved:', card.id, 'width:', width, 'height:', height);
+                }, 200); // 200ms debounce
+            });
+        }
+
+        // Draggable table rows functionality
+        function makeTableRowsDraggable(table) {
+            let draggedRow = null;
+            let order = JSON.parse(localStorage.getItem('table-order')) || [];
+
+            // Apply saved order on load
+            if (order.length > 0) {
+                const rows = Array.from(table.querySelectorAll('tr.draggable'));
+                rows.sort((a, b) => order.indexOf(a.dataset.id) - order.indexOf(b.dataset.id));
+                rows.forEach(row => table.appendChild(row));
+            }
+
+            table.addEventListener('mousedown', (e) => {
+                const row = e.target.closest('tr.draggable');
+                if (!row || e.target.tagName === 'BUTTON') return; // Ignore clicks on buttons
+                e.preventDefault();
+                draggedRow = row;
+                row.classList.add('dragging');
+                console.log('Row drag started:', row.dataset.id);
+            });
+
+            table.addEventListener('mousemove', (e) => {
+                if (!draggedRow) return;
+                e.preventDefault();
+                const rows = Array.from(table.querySelectorAll('tr.draggable'));
+                const y = e.clientY;
+                const targetRow = rows.find(row => {
+                    const rect = row.getBoundingClientRect();
+                    return y >= rect.top && y <= rect.bottom && row !== draggedRow;
+                });
+
+                if (targetRow) {
+                    const draggedRect = draggedRow.getBoundingClientRect();
+                    const targetRect = targetRow.getBoundingClientRect();
+                    if (y < targetRect.top + targetRect.height / 2) {
+                        table.insertBefore(draggedRow, targetRow);
+                    } else {
+                        table.insertBefore(draggedRow, targetRow.nextSibling);
+                    }
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (draggedRow) {
+                    draggedRow.classList.remove('dragging');
+                    const newOrder = Array.from(table.querySelectorAll('tr.draggable')).map(row => row.dataset.id);
+                    localStorage.setItem('table-order', JSON.stringify(newOrder));
+                    console.log('Row drag stopped, new order:', newOrder);
+                    draggedRow = null;
                 }
             });
         }
 
-        // Apply draggable and resizable functionality after DOM is loaded
+        // Apply functionality after DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.card').forEach(card => {
+            const cards = document.querySelectorAll('.card');
+            cards.forEach(card => {
                 makeDraggable(card);
-                // Ensure initial size is set for resize to work
-                if (!card.style.width) card.style.width = card.offsetWidth + 'px';
-                if (!card.style.height) card.style.height = card.offsetHeight + 'px';
             });
 
-            // Form submissions  
+            const table = document.querySelector('#investmentTable');
+            makeTableRowsDraggable(table);
+
+            // Form submissions
             document.getElementById('investmentForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 fetch('/add_investment', {
@@ -404,26 +500,31 @@
             // UI update
             function updateUI(data) {
                 const table = document.querySelector('#investmentTable');
-                table.innerHTML = `
-                    <tr>
-                        <th>Instrument</th>
-                        <th>Units</th>
-                        <th>Current Price</th>
-                        <th>Value</th>
-                        <th>Action</th>
-                    </tr>
-                `;
+                const header = table.querySelector('tr:first-child');
+                table.innerHTML = '';
+                table.appendChild(header);
+
                 data.investments.forEach(inv => {
-                    table.innerHTML += `
-                        <tr>
-                            <td>${inv.instrument}</td>
-                            <td>${inv.units.toFixed(2)}</td>
-                            <td>${inv.currency}${inv.current_price.toFixed(2)}</td>
-                            <td>${inv.currency}${inv.value.toFixed(2)}</td>
-                            <td><button class="delete-btn" onclick="deleteInvestment(${inv.id})">Delete</button></td>
-                        </tr>
+                    const row = document.createElement('tr');
+                    row.classList.add('draggable');
+                    row.dataset.id = inv.id;
+                    row.innerHTML = `
+                        <td>${inv.instrument}</td>
+                        <td>${inv.units.toFixed(2)}</td>
+                        <td>${inv.currency}${inv.current_price.toFixed(2)}</td>
+                        <td>${inv.currency}${inv.value.toFixed(2)}</td>
+                        <td><button class="delete-btn" onclick="deleteInvestment(${inv.id})">Delete</button></td>
                     `;
+                    table.appendChild(row);
                 });
+
+                // Reapply saved order
+                const order = JSON.parse(localStorage.getItem('table-order')) || [];
+                if (order.length > 0) {
+                    const rows = Array.from(table.querySelectorAll('tr.draggable'));
+                    rows.sort((a, b) => order.indexOf(a.dataset.id) - order.indexOf(b.dataset.id));
+                    rows.forEach(row => table.appendChild(row));
+                }
 
                 document.querySelector('.sidebar-left .section').innerHTML = `
                     <h2>Total Portfolio</h2>
