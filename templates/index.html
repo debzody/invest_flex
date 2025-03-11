@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Portfolio</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #fafafa 0%, #f0f2f5 100%);
+            color: #000000;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            position: relative;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: 100vh;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            position: absolute;
+            user-select: none;
+            transition: box-shadow 0.3s;
+            resize: both; /* Enable resizing */
+            overflow: auto; /* Required for resize to work */
+            min-width: 200px; /* Minimum size */
+            min-height: 100px;
+            max-width: 90vw; /* Limit to viewport */
+            max-height: 90vh;
+        }
+
+        .card:hover {
+            box-shadow: 0 6px 20px rgba(0, 122, 255, 0.1);
+        }
+
+        .card.dragging {
+            opacity: 0.8;
+            box-shadow: 0 8px 24px rgba(0, 122, 255, 0.2);
+        }
+
+        .drag-handle {
+            width: 100%;
+            height: 20px;
+            background: rgba(0, 122, 255, 0.1);
+            border-radius: 10px 10px 0 0;
+            cursor: move;
+            margin-bottom: 10px;
+        }
+
+        .sidebar-left {
+            width: 280px;
+            left: 0;
+            top: 0;
+        }
+
+        .quick-actions {
+            width: 280px;
+            left: 0;
+            top: 350px; /* Position below sidebar-left */
+        }
+
+        .table-container {
+            width: 800px;
+            left: 300px;
+            top: 0;
+        }
+
+        .sidebar-right {
+            width: 280px;
+            right: 0;
+            top: 0;
+        }
+
+        h2 {
+            font-size: 1.4em;
+            font-weight: 600;
+            color: #000000;
+            margin-bottom: 20px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section:last-child {
+            margin-bottom: 0;
+        }
+
+        p {
+            font-size: 1em;
+            margin: 10px 0;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 10px;
+            color: #000000;
+            font-weight: 400;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s;
+        }
+
+        p:hover {
+            background: rgba(0, 122, 255, 0.05);
+        }
+
+        p span.label {
+            font-weight: 500;
+        }
+
+        p span.value {
+            color: #007aff;
+        }
+
+        p span.profit {
+            color: #34c759;
+        }
+
+        p span.loss {
+            color: #ff3b30;
+        }
+
+        p span.arrow {
+            font-size: 0.9em;
+            margin-left: 5px;
+        }
+
+        .input-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        select, input {
+            padding: 10px;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #000000;
+            font-size: 14px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #007aff;
+            box-shadow: 0 0 5px rgba(0, 122, 255, 0.3);
+        }
+
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #007aff, #00b7ff);
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.2s;
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #005ecb, #0091d1);
+            transform: translateY(-1px);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            color: #000000;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e5e5ea;
+        }
+
+        th {
+            background: rgba(242, 242, 247, 0.9);
+            font-weight: 600;
+            color: #007aff;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        td:nth-child(4) {
+            color: #007aff;
+        }
+
+        .delete-btn {
+            padding: 6px 12px;
+            background: linear-gradient(135deg, #ff3b30, #ff6b6b);
+        }
+
+        .delete-btn:hover {
+            background: linear-gradient(135deg, #cc2e26, #e55a5a);
+            transform: translateY(-1px);
+        }
+
+        .chart-container {
+            margin-top: 10px;
+            height: 50px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card sidebar-left" id="sidebar-left">
+            <div class="drag-handle"></div>
+            <div class="section">
+                <h2>Total Portfolio</h2>
+                <p><span class="label">Total Investment</span><span class="value">₹{{ total_investment|default(0)|round(2) }}</span></p>
+                <p><span class="label">Total Mutual Funds</span><span class="value">₹{{ total_mf|default(0)|round(2) }}</span></p>
+                <p><span class="label">Total NSE Stocks</span><span class="value">₹{{ total_nse|default(0)|round(2) }}</span></p>
+                <p><span class="label">Total SAP</span><span class="value">₹{{ total_sap|default(0)|round(2) }}</span></p>
+                <p><span class="label">EPF Fund</span><span class="value">₹{{ epf|default(0)|round(2) }}</span></p>
+                <p><span class="label">Total Liquid Fund</span><span class="value">₹{{ total_liquid|default(0)|round(2) }}</span></p>
+            </div>
+        </div>
+
+        <div class="card quick-actions" id="quick-actions">
+            <div class="drag-handle"></div>
+            <div class="section">
+                <h2>Quick Actions</h2>
+                <form id="investmentForm" class="input-form">
+                    <select name="instrument">
+                        {% for key in initial_prices.keys() %}
+                        <option value="{{ key }}">{{ key }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="number" name="units" placeholder="Units" step="0.01">
+                    <button type="submit">Add Investment</button>
+                </form>
+                <form id="accountForm" class="input-form">
+                    <input type="number" name="epf" placeholder="EPF Amount" step="0.01">
+                    <input type="number" name="bank_balance" placeholder="Bank Balance" step="0.01">
+                    <button type="submit">Update Accounts</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card table-container" id="table-container">
+            <div class="drag-handle"></div>
+            <table id="investmentTable">
+                <tr>
+                    <th>Instrument</th>
+                    <th>Units</th>
+                    <th>Current Price</th>
+                    <th>Value</th>
+                    <th>Action</th>
+                </tr>
+                {% for inv in investments %}
+                <tr>
+                    <td>{{ inv.instrument }}</td>
+                    <td>{{ inv.units|default(0)|round(2) }}</td>
+                    <td>{{ inv.currency }}{{ inv.current_price|default(0)|round(2) }}</td>
+                    <td>{{ inv.currency }}{{ inv.value|default(0)|round(2) }}</td>
+                    <td><button class="delete-btn" onclick="deleteInvestment({{ inv.id }})">Delete</button></td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div class="card sidebar-right" id="sidebar-right">
+            <div class="drag-handle"></div>
+            <div class="section">
+                <h2>Daily P/L (IST)</h2>
+                <p><span class="label">Total Investment</span><span class="{% if total_investment - prev_values[0] >= 0 %}profit{% else %}loss{% endif %}">₹{{ (total_investment - prev_values[0])|round(2) }} {% if prev_values[0] != 0 %}{{ ((total_investment - prev_values[0]) / prev_values[0] * 100)|round(2) }}%{% endif %}<span class="arrow">{% if total_investment - prev_values[0] >= 0 %}▲{% else %}▼{% endif %}</span></span></p>
+                <div class="chart-container"><canvas id="totalInvestmentChart"></canvas></div>
+                <p><span class="label">Mutual Funds</span><span class="{% if total_mf - prev_values[1] >= 0 %}profit{% else %}loss{% endif %}">₹{{ (total_mf - prev_values[1])|round(2) }} {% if prev_values[1] != 0 %}{{ ((total_mf - prev_values[1]) / prev_values[1] * 100)|round(2) }}%{% endif %}<span class="arrow">{% if total_mf - prev_values[1] >= 0 %}▲{% else %}▼{% endif %}</span></span></p>
+                <div class="chart-container"><canvas id="totalMfChart"></canvas></div>
+                <p><span class="label">NSE Stocks</span><span class="{% if total_nse - prev_values[2] >= 0 %}profit{% else %}loss{% endif %}">₹{{ (total_nse - prev_values[2])|round(2) }} {% if prev_values[2] != 0 %}{{ ((total_nse - prev_values[2]) / prev_values[2] * 100)|round(2) }}%{% endif %}<span class="arrow">{% if total_nse - prev_values[2] >= 0 %}▲{% else %}▼{% endif %}</span></span></p>
+                <div class="chart-container"><canvas id="totalNseChart"></canvas></div>
+                <p><span class="label">SAP</span><span class="{% if total_sap - prev_values[3] >= 0 %}profit{% else %}loss{% endif %}">₹{{ (total_sap - prev_values[3])|round(2) }} {% if prev_values[3] != 0 %}{{ ((total_sap - prev_values[3]) / prev_values[3] * 100)|round(2) }}%{% endif %}<span class="arrow">{% if total_sap - prev_values[3] >= 0 %}▲{% else %}▼{% endif %}</span></span></p>
+                <div class="chart-container"><canvas id="totalSapChart"></canvas></div>
+                <p><span class="label">EPF Fund</span><span class="{% if epf - prev_values[4] >= 0 %}profit{% else %}loss{% endif %}">₹{{ (epf - prev_values[4])|round(2) }} {% if prev_values[4] != 0 %}{{ ((epf - prev_values[4]) / prev_values[4] * 100)|round(2) }}%{% endif %}<span class="arrow">{% if epf - prev_values[4] >= 0 %}▲{% else %}▼{% endif %}</span></span></p>
+                <div class="chart-container"><canvas id="epfChart"></canvas></div>
+                <p><span class="label">Liquid Fund</span><span class="{% if total_liquid - prev_values[5] >= 0 %}profit{% else %}loss{% endif %}">₹{{ (total_liquid - prev_values[5])|round(2) }} {% if prev_values[5] != 0 %}{{ ((total_liquid - prev_values[5]) / prev_values[5] * 100)|round(2) }}%{% endif %}<span class="arrow">{% if total_liquid - prev_values[5] >= 0 %}▲{% else %}▼{% endif %}</span></span></p>
+                <div class="chart-container"><canvas id="totalLiquidChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Draggable functionality
+        function makeDraggable(card) {
+            const handle = card.querySelector('.drag-handle');
+            let posX = parseInt(card.style.left) || 0;
+            let posY = parseInt(card.style.top) || 0;
+            let isDragging = false;
+            let startX, startY;
+
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                startX = e.clientX - posX;
+                startY = e.clientY - posY;
+                card.classList.add('dragging');
+                console.log('Drag started:', card.id, 'at', e.clientX, e.clientY);
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                posX = e.clientX - startX;
+                posY = e.clientY - startY;
+                card.style.left = posX + 'px';
+                card.style.top = posY + 'px';
+                console.log('Dragging:', card.id, 'to', posX, posY);
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    card.classList.remove('dragging');
+                    console.log('Drag stopped:', card.id, 'at', posX, posY);
+                }
+            });
+        }
+
+        // Apply draggable and resizable functionality after DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.card').forEach(card => {
+                makeDraggable(card);
+                // Ensure initial size is set for resize to work
+                if (!card.style.width) card.style.width = card.offsetWidth + 'px';
+                if (!card.style.height) card.style.height = card.offsetHeight + 'px';
+            });
+
+            // Form submissions  
+            document.getElementById('investmentForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                fetch('/add_investment', {
+                    method: 'POST',
+                    body: new FormData(this)
+                }).then(() => location.reload());
+            });
+
+            document.getElementById('accountForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                fetch('/update_accounts', {
+                    method: 'POST',
+                    body: new FormData(this)
+                }).then(() => location.reload());
+            });
+
+            window.deleteInvestment = function(id) {
+                if (confirm('Are you sure you want to delete this investment?')) {
+                    fetch('/delete_investment/' + id, {
+                        method: 'POST'
+                    }).then(() => location.reload());
+                }
+            };
+
+            // Chart creation
+            function createChart(canvasId, data, label) {
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(d => d[0].substring(5)),
+                        datasets: [{
+                            label: label,
+                            data: data.map(d => d[1]),
+                            borderColor: data[data.length - 1][1] >= data[data.length - 2][1] ? '#34c759' : '#ff3b30',
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            x: { display: false },
+                            y: { display: false }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false }
+                        },
+                        maintainAspectRatio: false
+                    }
+                });
+            }
+
+            // UI update
+            function updateUI(data) {
+                const table = document.querySelector('#investmentTable');
+                table.innerHTML = `
+                    <tr>
+                        <th>Instrument</th>
+                        <th>Units</th>
+                        <th>Current Price</th>
+                        <th>Value</th>
+                        <th>Action</th>
+                    </tr>
+                `;
+                data.investments.forEach(inv => {
+                    table.innerHTML += `
+                        <tr>
+                            <td>${inv.instrument}</td>
+                            <td>${inv.units.toFixed(2)}</td>
+                            <td>${inv.currency}${inv.current_price.toFixed(2)}</td>
+                            <td>${inv.currency}${inv.value.toFixed(2)}</td>
+                            <td><button class="delete-btn" onclick="deleteInvestment(${inv.id})">Delete</button></td>
+                        </tr>
+                    `;
+                });
+
+                document.querySelector('.sidebar-left .section').innerHTML = `
+                    <h2>Total Portfolio</h2>
+                    <p><span class="label">Total Investment</span><span class="value">₹${data.total_investment.toFixed(2)}</span></p>
+                    <p><span class="label">Total Mutual Funds</span><span class="value">₹${data.total_mf.toFixed(2)}</span></p>
+                    <p><span class="label">Total NSE Stocks</span><span class="value">₹${data.total_nse.toFixed(2)}</span></p>
+                    <p><span class="label">Total SAP</span><span class="value">₹${data.total_sap.toFixed(2)}</span></p>
+                    <p><span class="label">EPF Fund</span><span class="value">₹${data.epf.toFixed(2)}</span></p>
+                    <p><span class="label">Total Liquid Fund</span><span class="value">₹${data.total_liquid.toFixed(2)}</span></p>
+                `;
+
+                document.querySelector('.sidebar-right .section').innerHTML = `
+                    <h2>Daily P/L (IST)</h2>
+                    <p><span class="label">Total Investment</span><span class="${data.total_investment - data.prev_values[0] >= 0 ? 'profit' : 'loss'}">₹${(data.total_investment - data.prev_values[0]).toFixed(2)} ${data.prev_values[0] !== 0 ? ((data.total_investment - data.prev_values[0]) / data.prev_values[0] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_investment - data.prev_values[0] >= 0 ? '▲' : '▼'}</span></span></p>
+                    <div class="chart-container"><canvas id="totalInvestmentChart"></canvas></div>
+                    <p><span class="label">Mutual Funds</span><span class="${data.total_mf - data.prev_values[1] >= 0 ? 'profit' : 'loss'}">₹${(data.total_mf - data.prev_values[1]).toFixed(2)} ${data.prev_values[1] !== 0 ? ((data.total_mf - data.prev_values[1]) / data.prev_values[1] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_mf - data.prev_values[1] >= 0 ? '▲' : '▼'}</span></span></p>
+                    <div class="chart-container"><canvas id="totalMfChart"></canvas></div>
+                    <p><span class="label">NSE Stocks</span><span class="${data.total_nse - data.prev_values[2] >= 0 ? 'profit' : 'loss'}">₹${(data.total_nse - data.prev_values[2]).toFixed(2)} ${data.prev_values[2] !== 0 ? ((data.total_nse - data.prev_values[2]) / data.prev_values[2] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_nse - data.prev_values[2] >= 0 ? '▲' : '▼'}</span></span></p>
+                    <div class="chart-container"><canvas id="totalNseChart"></canvas></div>
+                    <p><span class="label">SAP</span><span class="${data.total_sap - data.prev_values[3] >= 0 ? 'profit' : 'loss'}">₹${(data.total_sap - data.prev_values[3]).toFixed(2)} ${data.prev_values[3] !== 0 ? ((data.total_sap - data.prev_values[3]) / data.prev_values[3] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_sap - data.prev_values[3] >= 0 ? '▲' : '▼'}</span></span></p>
+                    <div class="chart-container"><canvas id="totalSapChart"></canvas></div>
+                    <p><span class="label">EPF Fund</span><span class="${data.epf - data.prev_values[4] >= 0 ? 'profit' : 'loss'}">₹${(data.epf - data.prev_values[4]).toFixed(2)} ${data.prev_values[4] !== 0 ? ((data.epf - data.prev_values[4]) / data.prev_values[4] * 100).toFixed(2) : '0'}%<span class="arrow">${data.epf - data.prev_values[4] >= 0 ? '▲' : '▼'}</span></span></p>
+                    <div class="chart-container"><canvas id="epfChart"></canvas></div>
+                    <p><span class="label">Liquid Fund</span><span class="${data.total_liquid - data.prev_values[5] >= 0 ? 'profit' : 'loss'}">₹${(data.total_liquid - data.prev_values[5]).toFixed(2)} ${data.prev_values[5] !== 0 ? ((data.total_liquid - data.prev_values[5]) / data.prev_values[5] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_liquid - data.prev_values[5] >= 0 ? '▲' : '▼'}</span></span></p>
+                    <div class="chart-container"><canvas id="totalLiquidChart"></canvas></div>
+                `;
+
+                const historical = data.historical_values.reverse();
+                createChart('totalInvestmentChart', historical.map(h => [h[0], h[1]]), 'Total Investment');
+                createChart('totalMfChart', historical.map(h => [h[0], h[2]]), 'Mutual Funds');
+                createChart('totalNseChart', historical.map(h => [h[0], h[3]]), 'NSE Stocks');
+                createChart('totalSapChart', historical.map(h => [h[0], h[4]]), 'SAP');
+                createChart('epfChart', historical.map(h => [h[0], h[5]]), 'EPF Fund');
+                createChart('totalLiquidChart', historical.map(h => [h[0], h[6]]), 'Liquid Fund');
+            }
+
+            // Initial data fetch and periodic updates
+            fetch('/get_prices')
+                .then(response => response.json())
+                .then(data => updateUI(data))
+                .catch(error => console.error('Error initial fetch:', error));
+
+            setInterval(() => {
+                fetch('/get_prices')
+                    .then(response => response.json())
+                    .then(data => updateUI(data))
+                    .catch(error => console.error('Error refreshing data:', error));
+            }, 30000);
+
+            const historical = {{ historical_values|safe }}.reverse();
+            createChart('totalInvestmentChart', historical.map(h => [h[0], h[1]]), 'Total Investment');
+            createChart('totalMfChart', historical.map(h => [h[0], h[2]]), 'Mutual Funds');
+            createChart('totalNseChart', historical.map(h => [h[0], h[3]]), 'NSE Stocks');
+            createChart('totalSapChart', historical.map(h => [h[0], h[4]]), 'SAP');
+            createChart('epfChart', historical.map(h => [h[0], h[5]]), 'EPF Fund');
+            createChart('totalLiquidChart', historical.map(h => [h[0], h[6]]), 'Liquid Fund');
+        });
+    </script>
+</body>
+</html>
