@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, jsonify
-import sqlite3
 from datetime import datetime, timedelta
 import logging
 import requests
@@ -10,6 +9,15 @@ app = Flask(__name__)
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Supabase Setup
+SUPABASE_URL = "https://roqjzyveznkcmkozgrbc.supabase.co/rest/v1"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvcWp6eXZlem5rY21rb3pncmJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDE4NDcxMTgsImV4cCI6MjA1NzQyMzExOH0.kD7PS9jFryAEw28VPcQ2PkNukEP6gGwyDlCv08hk2AY"
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
 
 # Finnhub API Key 
 FINNHUB_API_KEY = "cv67nshr01qi7f6oqp00cv67nshr01qi7f6oqp0g"
@@ -59,32 +67,6 @@ CURRENCY = {
 
 USD_TO_INR = 87.2392
 
-def init_db():
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS investments
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                     instrument TEXT UNIQUE, 
-                     units REAL, 
-                     initial_price REAL, 
-                     current_price REAL, 
-                     currency TEXT,
-                     purchase_date TEXT)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS accounts
-                    (id INTEGER PRIMARY KEY, 
-                     epf REAL DEFAULT 0, 
-                     bank_balance REAL DEFAULT 0)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS daily_values
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                     date TEXT,
-                     total_investment REAL,
-                     total_mf REAL,
-                     total_nse REAL,
-                     total_sap REAL,
-                     epf REAL,
-                     total_liquid REAL)''')
-        c.execute("INSERT OR IGNORE INTO accounts (id, epf, bank_balance) VALUES (1, 0, 0)")
-
 def fetch_finnhub_price(symbol):
     url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     try:
@@ -93,7 +75,8 @@ def fetch_finnhub_price(symbol):
         data = response.json()
         price = data.get("c")
         return float(price) if price and price > 0 else INITIAL_PRICES.get(symbol, 0)
-    except:
+    except Exception as e:
+        logger.error(f"Finnhub API error for {symbol}: {e}")
         return INITIAL_PRICES.get(symbol, 0)
 
 def get_nse_live_price(symbol):
@@ -113,7 +96,8 @@ def get_nse_live_price(symbol):
         data = response.json()
         price = data.get("priceInfo", {}).get("lastPrice")
         return float(price) if price else INITIAL_PRICES.get(symbol, 0)
-    except:
+    except Exception as e:
+        logger.error(f"NSE API error for {symbol}: {e}")
         return INITIAL_PRICES.get(symbol, 0)
 
 def get_mutual_fund_nav(symbol):
@@ -127,7 +111,8 @@ def get_mutual_fund_nav(symbol):
         data = response.json()
         nav_data = data["data"][0]
         return float(nav_data["nav"])
-    except:
+    except Exception as e:
+        logger.error(f"MF API error for {symbol}: {e}")
         return INITIAL_PRICES.get(symbol, 0)
 
 def get_current_price(symbol):
@@ -140,66 +125,110 @@ def get_current_price(symbol):
     else:
         return INITIAL_PRICES.get(symbol, 0)
 
+def fetch_investments():
+    url = f"{SUPABASE_URL}/investments?select=*"
+    try:
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Supabase fetch_investments error: {e}")
+        return []
+
+def fetch_accounts():
+    url = f"{SUPABASE_URL}/accounts?select=epf,bank_balance&limit=1"
+    try:
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        data = response.json()
+        return data[0] if data else {"epf": 0, "bank_balance": 0}
+    except Exception as e:
+        logger.error(f"Supabase fetch_accounts error: {e}")
+        return {"epf": 0, "bank_balance": 0}
+
 def store_daily_values(total_investment, total_mf, total_nse, total_sap, epf, total_liquid):
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        today = datetime.now(IST).strftime('%Y-%m-%d')
-        c.execute("INSERT INTO daily_values (date, total_investment, total_mf, total_nse, total_sap, epf, total_liquid) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                  (today, total_investment, total_mf, total_nse, total_sap, epf, total_liquid))
-        conn.commit()
+    today = datetime.now(IST).strftime('%Y-%m-%d')
+    url = f"{SUPABASE_URL}/daily_values"
+    payload = {
+        "date": today,
+        "total_investment": total_investment,
+        "total_mf": total_mf,
+        "total_nse": total_nse,
+        "total_sap": total_sap,
+        "epf": epf,
+        "total_liquid": total_liquid
+    }
+    try:
+        # Check if exists, then update or insert
+        check_url = f"{url}?date=eq.{today}"
+        check = requests.get(check_url, headers=HEADERS)
+        if check.status_code == 200 and check.json():
+            requests.patch(check_url, headers=HEADERS, json=payload)
+        else:
+            requests.post(url, headers=HEADERS, json=payload)
+    except Exception as e:
+        logger.error(f"Supabase store_daily_values error: {e}")
 
 def get_previous_day_values():
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        yesterday = (datetime.now(IST) - timedelta(days=1)).strftime('%Y-%m-%d')
-        c.execute("SELECT total_investment, total_mf, total_nse, total_sap, epf, total_liquid FROM daily_values WHERE date = ? ORDER BY id DESC LIMIT 1", (yesterday,))
-        return c.fetchone() or (0, 0, 0, 0, 0, 0)
+    yesterday = (datetime.now(IST) - timedelta(days=1)).strftime('%Y-%m-%d')
+    url = f"{SUPABASE_URL}/daily_values?date=eq.{yesterday}"
+    try:
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        data = response.json()
+        if data:
+            d = data[0]
+            return (d["total_investment"], d["total_mf"], d["total_nse"], d["total_sap"], d["epf"], d["total_liquid"])
+        return (0, 0, 0, 0, 0, 0)
+    except Exception as e:
+        logger.error(f"Supabase get_previous_day_values error: {e}")
+        return (0, 0, 0, 0, 0, 0)
 
 def get_historical_values():
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        c.execute("SELECT date, total_investment, total_mf, total_nse, total_sap, epf, total_liquid FROM daily_values ORDER BY date DESC LIMIT 5")
-        return c.fetchall()
+    url = f"{SUPABASE_URL}/daily_values?select=*&order=date.desc&limit=5"
+    try:
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        data = response.json()
+        return [[d["date"], d["total_investment"], d["total_mf"], d["total_nse"], d["total_sap"], d["epf"], d["total_liquid"]] for d in data]
+    except Exception as e:
+        logger.error(f"Supabase get_historical_values error: {e}")
+        return []
 
 @app.route('/')
 def index():
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        
-        c.execute("SELECT * FROM investments")
-        investments = c.fetchall()
-        
-        total_investment = total_mf = total_nse = total_sap = 0
-        investment_data = []
-        for inv in investments:
-            current_price = get_current_price(inv[1])
-            value = inv[2] * current_price if current_price is not None else 0
-            if inv[1] == 'SAP':
-                total_sap += value * USD_TO_INR
-            elif inv[1] in SCHEME_CODES:
-                total_mf += value
-            elif inv[1].endswith('.NS'):
-                total_nse += value
-            total_investment += value if inv[5] == '₹' else value * USD_TO_INR
-            investment_data.append({
-                'id': inv[0],
-                'instrument': inv[1],
-                'units': inv[2],
-                'current_price': current_price if current_price is not None else 0,
-                'currency': inv[5],
-                'value': value
-            })
-        
-        c.execute("SELECT epf, bank_balance FROM accounts WHERE id=1")
-        account = c.fetchone()
-        epf = account[0] if account and account[0] is not None else 0
-        bank_balance = account[1] if account and account[1] is not None else 0
-        total_liquid = bank_balance
-        total_investment += epf + bank_balance
-        
-        store_daily_values(total_investment, total_mf, total_nse, total_sap, epf, total_liquid)
-        prev_values = get_previous_day_values()
-        historical_values = get_historical_values()
+    investments = fetch_investments()
+    total_investment = total_mf = total_nse = total_sap = 0
+    investment_data = []
+
+    for inv in investments:
+        current_price = get_current_price(inv["instrument"])
+        value = inv["units"] * current_price if current_price is not None else 0
+        if inv["instrument"] == 'SAP':
+            total_sap += value * USD_TO_INR
+        elif inv["instrument"] in SCHEME_CODES:
+            total_mf += value
+        elif inv["instrument"].endswith('.NS'):
+            total_nse += value
+        total_investment += value if inv["currency"] == '₹' else value * USD_TO_INR
+        investment_data.append({
+            'id': str(inv["id"]),
+            'instrument': inv["instrument"],
+            'units': inv["units"],
+            'current_price': current_price if current_price is not None else 0,
+            'currency': inv["currency"],
+            'value': value
+        })
+
+    accounts = fetch_accounts()
+    epf = accounts["epf"]
+    bank_balance = accounts["bank_balance"]
+    total_liquid = bank_balance
+    total_investment += epf + bank_balance
+
+    store_daily_values(total_investment, total_mf, total_nse, total_sap, epf, total_liquid)
+    prev_values = get_previous_day_values()
+    historical_values = get_historical_values()
 
     return render_template('index.html',
                          investments=investment_data,
@@ -216,42 +245,38 @@ def index():
 
 @app.route('/get_prices')
 def get_prices():
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        c.execute("SELECT id, instrument, units, currency FROM investments")
-        investments = c.fetchall()
-        
-        total_investment = total_mf = total_nse = total_sap = 0
-        investment_data = []
-        for inv in investments:
-            current_price = get_current_price(inv[1])
-            value = inv[2] * current_price if current_price is not None else 0
-            if inv[1] == 'SAP':
-                total_sap += value * USD_TO_INR
-            elif inv[1] in SCHEME_CODES:
-                total_mf += value
-            elif inv[1].endswith('.NS'):
-                total_nse += value
-            total_investment += value if inv[3] == '₹' else value * USD_TO_INR
-            investment_data.append({
-                'id': inv[0],
-                'instrument': inv[1],
-                'units': inv[2],
-                'current_price': current_price if current_price is not None else 0,
-                'currency': inv[3],
-                'value': value
-            })
-        
-        c.execute("SELECT epf, bank_balance FROM accounts WHERE id=1")
-        account = c.fetchone()
-        epf = account[0] if account else 0
-        bank_balance = account[1] if account else 0
-        total_liquid = bank_balance
-        total_investment += epf + bank_balance
-        
-        store_daily_values(total_investment, total_mf, total_nse, total_sap, epf, total_liquid)
-        prev_values = get_previous_day_values()
-        historical_values = get_historical_values()
+    investments = fetch_investments()
+    total_investment = total_mf = total_nse = total_sap = 0
+    investment_data = []
+
+    for inv in investments:
+        current_price = get_current_price(inv["instrument"])
+        value = inv["units"] * current_price if current_price is not None else 0
+        if inv["instrument"] == 'SAP':
+            total_sap += value * USD_TO_INR
+        elif inv["instrument"] in SCHEME_CODES:
+            total_mf += value
+        elif inv["instrument"].endswith('.NS'):
+            total_nse += value
+        total_investment += value if inv["currency"] == '₹' else value * USD_TO_INR
+        investment_data.append({
+            'id': str(inv["id"]),
+            'instrument': inv["instrument"],
+            'units': inv["units"],
+            'current_price': current_price if current_price is not None else 0,
+            'currency': inv["currency"],
+            'value': value
+        })
+
+    accounts = fetch_accounts()
+    epf = accounts["epf"]
+    bank_balance = accounts["bank_balance"]
+    total_liquid = bank_balance
+    total_investment += epf + bank_balance
+
+    store_daily_values(total_investment, total_mf, total_nse, total_sap, epf, total_liquid)
+    prev_values = get_previous_day_values()
+    historical_values = get_historical_values()
 
     return jsonify({
         'investments': investment_data,
@@ -275,29 +300,40 @@ def add_investment():
     units = float(data['units'])
     initial_price = INITIAL_PRICES.get(instrument, 0)
     currency = CURRENCY.get(instrument, '₹')
-    
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        c.execute("SELECT units FROM investments WHERE instrument = ?", (instrument,))
-        existing = c.fetchone()
-        
-        if existing:
-            new_units = existing[0] + units
-            c.execute("UPDATE investments SET units = ?, current_price = ? WHERE instrument = ?",
-                     (new_units, initial_price, instrument))
-        else:
-            c.execute("INSERT INTO investments (instrument, units, initial_price, current_price, currency, purchase_date) VALUES (?, ?, ?, ?, ?, ?)",
-                     (instrument, units, initial_price, initial_price, currency, datetime.now(IST).strftime('%Y-%m-%d')))
-        conn.commit()
-    return jsonify({'status': 'success'})
 
-@app.route('/delete_investment/<int:id>', methods=['POST'])
+    url = f"{SUPABASE_URL}/investments"
+    payload = {
+        "instrument": instrument,
+        "units": units,
+        "initial_price": initial_price,
+        "current_price": initial_price,
+        "currency": currency,
+        "purchase_date": datetime.now(IST).strftime('%Y-%m-%d')
+    }
+    try:
+        # Check if instrument exists
+        check_url = f"{url}?instrument=eq.{instrument}"
+        check = requests.get(check_url, headers=HEADERS)
+        if check.status_code == 200 and check.json():
+            existing = check.json()[0]
+            new_units = existing["units"] + units
+            requests.patch(f"{url}?id=eq.{existing['id']}", headers=HEADERS, json={"units": new_units, "current_price": initial_price})
+        else:
+            requests.post(url, headers=HEADERS, json=payload)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        logger.error(f"Supabase add_investment error: {e}")
+        return jsonify({'status': 'error'}), 500
+
+@app.route('/delete_investment/<id>', methods=['POST'])
 def delete_investment(id):
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM investments WHERE id = ?", (id,))
-        conn.commit()
-    return jsonify({'status': 'success'})
+    url = f"{SUPABASE_URL}/investments?id=eq.{id}"
+    try:
+        requests.delete(url, headers=HEADERS)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        logger.error(f"Supabase delete_investment error: {e}")
+        return jsonify({'status': 'error'}), 500
 
 @app.route('/update_accounts', methods=['POST'])
 def update_accounts():
@@ -305,13 +341,29 @@ def update_accounts():
     epf = float(data['epf']) if data['epf'] else 0
     bank_balance = float(data['bank_balance']) if data['bank_balance'] else 0
     
-    with sqlite3.connect('investments.db') as conn:
-        c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO accounts (id, epf, bank_balance) VALUES (1, ?, ?)",
-                 (epf, bank_balance))
-        conn.commit()
-    return jsonify({'status': 'success'})
+    url = f"{SUPABASE_URL}/accounts"
+    payload = {"epf": epf, "bank_balance": bank_balance}
+    try:
+        check_url = f"{url}?select=id&limit=1"
+        check = requests.get(check_url, headers=HEADERS)
+        if check.status_code == 200 and check.json():
+            existing_id = check.json()[0]["id"]
+            requests.patch(f"{url}?id=eq.{existing_id}", headers=HEADERS, json=payload)
+        else:
+            requests.post(url, headers=HEADERS, json=payload)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        logger.error(f"Supabase update_accounts error: {e}")
+        return jsonify({'status': 'error'}), 500
 
 if __name__ == '__main__':
-    init_db()
+    try:
+        # Test Supabase connection
+        test_response = requests.get(f"{SUPABASE_URL}/investments?limit=1", headers=HEADERS)
+        if test_response.status_code == 200:
+            logger.info("Successfully connected to Supabase!")
+        else:
+            logger.error(f"Failed to connect to Supabase: {test_response.status_code} - {test_response.text}")
+    except Exception as e:
+        logger.error(f"Supabase connection test failed: {e}")
     app.run(debug=True)
