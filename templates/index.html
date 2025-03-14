@@ -26,8 +26,43 @@
             min-height: 100vh;
         }
 
+        /* Total Investment Counter Styles */
+        .total-investment-counter {
+            position: relative;
+            width: 100%;
+            max-width: 90%;
+            margin: 0px auto 15px;
+            text-align: center;
+            padding: 0px;
+            background: rgba(0, 0, 50, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .total-investment-counter h1 {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #ffffff;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            display: none;
+        }
+
+        .total-investment-counter .value {
+            font-size: 3em;
+            font-weight: 900;
+            color: #00b7ff;
+            margin-top: 10px;
+            letter-spacing: 1px;
+        }
+
+        /* Card Styles */
         .card {
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(0, 0, 50, 0.8);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border-radius: 20px;
@@ -43,6 +78,7 @@
             min-height: 100px;
             max-width: 90vw;
             max-height: 90vh;
+            color: #ffffff;
         }
 
         .card:hover {
@@ -52,6 +88,10 @@
         .card.dragging {
             opacity: 0.8;
             box-shadow: 0 8px 24px rgba(0, 122, 255, 0.2);
+        }
+
+        .card.dragging .drag-handle {
+            cursor: grabbing;
         }
 
         .drag-handle {
@@ -90,7 +130,7 @@
         h2 {
             font-size: 1.4em;
             font-weight: 600;
-            color: #000000;
+            color: #ffffff;
             margin-bottom: 20px;
         }
 
@@ -106,9 +146,9 @@
             font-size: 1em;
             margin: 10px 0;
             padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 10px;
-            color: #000000;
+            color: #ffffff;
             font-weight: 400;
             display: flex;
             justify-content: space-between;
@@ -117,7 +157,7 @@
         }
 
         p:hover {
-            background: rgba(0, 122, 255, 0.05);
+            background: rgba(0, 122, 255, 0.2);
         }
 
         p span.label {
@@ -125,15 +165,15 @@
         }
 
         p span.value {
-            color: #007aff;
+            color: #ffffff;
         }
 
         p span.profit {
-            color: #34c759;
+            color: #b3ffb3;
         }
 
         p span.loss {
-            color: #ff3b30;
+            color: #ff9999;
         }
 
         p span.arrow {
@@ -152,7 +192,7 @@
             padding: 10px;
             border: 1px solid #d2d2d7;
             border-radius: 8px;
-            background: #ffffff;
+            background: rgba(255, 255, 255, 0.9);
             color: #000000;
             font-size: 14px;
             transition: border-color 0.3s, box-shadow 0.3s;
@@ -183,19 +223,19 @@
         table {
             width: 100%;
             border-collapse: collapse;
-            color: #000000;
+            color: #ffffff;
         }
 
         th, td {
             padding: 12px 15px;
             text-align: left;
-            border-bottom: 1px solid #e5e5ea;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         th {
-            background: rgba(242, 242, 247, 0.9);
+            background: rgba(242, 242, 247, 0.2);
             font-weight: 600;
-            color: #007aff;
+            color: #ffffff;
         }
 
         tr {
@@ -207,8 +247,8 @@
         }
 
         tr.dragging {
-            opacity: 0.5;
-            background: rgba(0, 122, 255, 0.1);
+            opacity: 0.5 !important;
+            background: rgba(0, 122, 255, 0.1) !important;
         }
 
         tr:last-child td {
@@ -216,7 +256,7 @@
         }
 
         td:nth-child(4) {
-            color: #007aff;
+            color: #ffffff;
         }
 
         .delete-btn {
@@ -233,9 +273,42 @@
             margin-top: 10px;
             height: 50px;
         }
+
+        /* Instrument-specific row styles */
+        tr.instrument-mf {
+            background: rgba(255, 165, 0, 0.05);
+        }
+        tr.instrument-nse {
+            background: rgba(52, 199, 89, 0.05);
+        }
+        tr.instrument-sap {
+            background: rgba(0, 122, 255, 0.05);
+        }
+        tr.instrument-liquid {
+            background: rgba(88, 86, 214, 0.05);
+        }
+
+        tr.instrument-mf:hover {
+            background: rgba(255, 165, 0, 0.1);
+        }
+        tr.instrument-nse:hover {
+            background: rgba(52, 199, 89, 0.1);
+        }
+        tr.instrument-sap:hover {
+            background: rgba(0, 122, 255, 0.1);
+        }
+        tr.instrument-liquid:hover {
+            background: rgba(88, 86, 214, 0.1);
+        }
     </style>
 </head>
 <body>
+    <!-- Total Investment Counter -->
+    <div class="total-investment-counter">
+        <h1>Total Investment</h1>
+        <div class="value">₹{{ total_investment|round(1)|format_indian }}</div>
+    </div>
+
     <div class="container">
         <div class="card sidebar-left" id="sidebar-left">
             <div class="drag-handle"></div>
@@ -263,10 +336,13 @@
                     <input type="number" name="units" placeholder="Units" step="0.01">
                     <button type="submit">Add Investment</button>
                 </form>
-                <form id="accountForm" class="input-form">
+                <form id="epfForm" class="input-form">
                     <input type="number" name="epf" placeholder="EPF Amount" step="0.01">
+                    <button type="submit">Update EPF</button>
+                </form>
+                <form id="bankBalanceForm" class="input-form">
                     <input type="number" name="bank_balance" placeholder="Bank Balance" step="0.01">
-                    <button type="submit">Update Accounts</button>
+                    <button type="submit">Update Bank Balance</button>
                 </form>
             </div>
         </div>
@@ -285,8 +361,8 @@
                 <tr class="draggable" data-id="{{ inv.id }}">
                     <td>{{ inv.instrument }}</td>
                     <td>{{ inv.units|default(0)|round(2) }}</td>
-                    <td>{{ inv.currency }}{{ inv.current_price|default(0)|round(2) }}</td>
-                    <td>{{ inv.currency }}{{ inv.value|default(0)|round(2) }}</td>
+                    <td>₹{{ inv.current_price|default(0)|round(2) }}</td>
+                    <td>₹{{ inv.value|default(0)|round(2) }}</td>
                     <td><button class="delete-btn" onclick="deleteInvestment({{ inv.id }})">Delete</button></td>
                 </tr>
                 {% endfor %}
@@ -324,7 +400,6 @@
             let isDragging = false;
             let startX, startY;
 
-            // Apply saved position and size
             card.style.left = posX + 'px';
             card.style.top = posY + 'px';
             card.style.width = width + 'px';
@@ -336,7 +411,6 @@
                 startX = e.clientX - posX;
                 startY = e.clientY - posY;
                 card.classList.add('dragging');
-                console.log('Drag started:', card.id, 'at', e.clientX, e.clientY);
             });
 
             document.addEventListener('mousemove', (e) => {
@@ -346,7 +420,6 @@
                 posY = e.clientY - startY;
                 card.style.left = posX + 'px';
                 card.style.top = posY + 'px';
-                console.log('Dragging:', card.id, 'to', posX, posY);
             });
 
             document.addEventListener('mouseup', () => {
@@ -355,17 +428,13 @@
                     card.classList.remove('dragging');
                     localStorage.setItem(`${card.id}-left`, posX);
                     localStorage.setItem(`${card.id}-top`, posY);
-                    console.log('Drag stopped:', card.id, 'at', posX, posY);
                 }
-                // Save size after dragging or resizing
                 width = card.offsetWidth;
                 height = card.offsetHeight;
                 localStorage.setItem(`${card.id}-width`, width);
                 localStorage.setItem(`${card.id}-height`, height);
-                console.log('Size saved:', card.id, 'width:', width, 'height:', height);
             });
 
-            // Save size on resize (debounced to avoid excessive updates)
             let resizeTimeout;
             card.addEventListener('resize', () => {
                 clearTimeout(resizeTimeout);
@@ -374,17 +443,14 @@
                     height = card.offsetHeight;
                     localStorage.setItem(`${card.id}-width`, width);
                     localStorage.setItem(`${card.id}-height`, height);
-                    console.log('Resize saved:', card.id, 'width:', width, 'height:', height);
-                }, 200); // 200ms debounce
+                }, 200);
             });
         }
 
-        // Draggable table rows functionality
         function makeTableRowsDraggable(table) {
             let draggedRow = null;
             let order = JSON.parse(localStorage.getItem('table-order')) || [];
 
-            // Apply saved order on load
             if (order.length > 0) {
                 const rows = Array.from(table.querySelectorAll('tr.draggable'));
                 rows.sort((a, b) => order.indexOf(a.dataset.id) - order.indexOf(b.dataset.id));
@@ -393,11 +459,10 @@
 
             table.addEventListener('mousedown', (e) => {
                 const row = e.target.closest('tr.draggable');
-                if (!row || e.target.tagName === 'BUTTON') return; // Ignore clicks on buttons
+                if (!row || e.target.tagName === 'BUTTON') return;
                 e.preventDefault();
                 draggedRow = row;
                 row.classList.add('dragging');
-                console.log('Row drag started:', row.dataset.id);
             });
 
             table.addEventListener('mousemove', (e) => {
@@ -426,23 +491,18 @@
                     draggedRow.classList.remove('dragging');
                     const newOrder = Array.from(table.querySelectorAll('tr.draggable')).map(row => row.dataset.id);
                     localStorage.setItem('table-order', JSON.stringify(newOrder));
-                    console.log('Row drag stopped, new order:', newOrder);
                     draggedRow = null;
                 }
             });
         }
 
-        // Apply functionality after DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
             const cards = document.querySelectorAll('.card');
-            cards.forEach(card => {
-                makeDraggable(card);
-            });
+            cards.forEach(card => makeDraggable(card));
 
             const table = document.querySelector('#investmentTable');
             makeTableRowsDraggable(table);
 
-            // Form submissions
             document.getElementById('investmentForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 fetch('/add_investment', {
@@ -451,9 +511,17 @@
                 }).then(() => location.reload());
             });
 
-            document.getElementById('accountForm').addEventListener('submit', function(e) {
+            document.getElementById('epfForm').addEventListener('submit', function(e) {
                 e.preventDefault();
-                fetch('/update_accounts', {
+                fetch('/update_epf', {
+                    method: 'POST',
+                    body: new FormData(this)
+                }).then(() => location.reload());
+            });
+
+            document.getElementById('bankBalanceForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                fetch('/update_bank_balance', {
                     method: 'POST',
                     body: new FormData(this)
                 }).then(() => location.reload());
@@ -467,7 +535,6 @@
                 }
             };
 
-            // Chart creation
             function createChart(canvasId, data, label) {
                 const ctx = document.getElementById(canvasId).getContext('2d');
                 new Chart(ctx, {
@@ -477,7 +544,7 @@
                         datasets: [{
                             label: label,
                             data: data.map(d => d[1]),
-                            borderColor: data[data.length - 1][1] >= data[data.length - 2][1] ? '#34c759' : '#ff3b30',
+                            borderColor: data[data.length - 1][1] >= data[data.length - 2][1] ? '#b3ffb3' : '#ff9999',
                             borderWidth: 2,
                             fill: false,
                             pointRadius: 0
@@ -497,7 +564,6 @@
                 });
             }
 
-            // UI update
             function updateUI(data) {
                 const table = document.querySelector('#investmentTable');
                 const header = table.querySelector('tr:first-child');
@@ -507,18 +573,26 @@
                 data.investments.forEach(inv => {
                     const row = document.createElement('tr');
                     row.classList.add('draggable');
+                    if (inv.instrument.toLowerCase().includes('mf') || inv.instrument.toLowerCase().includes('mutual')) {
+                        row.classList.add('instrument-mf');
+                    } else if (inv.instrument.toLowerCase().includes('nse')) {
+                        row.classList.add('instrument-nse');
+                    } else if (inv.instrument.toLowerCase().includes('sap')) {
+                        row.classList.add('instrument-sap');
+                    } else if (inv.instrument.toLowerCase().includes('liquid')) {
+                        row.classList.add('instrument-liquid');
+                    }
                     row.dataset.id = inv.id;
                     row.innerHTML = `
                         <td>${inv.instrument}</td>
                         <td>${inv.units.toFixed(2)}</td>
-                        <td>${inv.currency}${inv.current_price.toFixed(2)}</td>
-                        <td>${inv.currency}${inv.value.toFixed(2)}</td>
+                        <td>₹${inv.current_price.toFixed(2)}</td>
+                        <td>₹${inv.value.toFixed(2)}</td>
                         <td><button class="delete-btn" onclick="deleteInvestment(${inv.id})">Delete</button></td>
                     `;
                     table.appendChild(row);
                 });
 
-                // Reapply saved order
                 const order = JSON.parse(localStorage.getItem('table-order')) || [];
                 if (order.length > 0) {
                     const rows = Array.from(table.querySelectorAll('tr.draggable'));
@@ -561,7 +635,6 @@
                 createChart('totalLiquidChart', historical.map(h => [h[0], h[6]]), 'Liquid Fund');
             }
 
-            // Initial data fetch and periodic updates
             fetch('/get_prices')
                 .then(response => response.json())
                 .then(data => updateUI(data))

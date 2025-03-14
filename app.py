@@ -67,6 +67,31 @@ CURRENCY = {
 
 USD_TO_INR = 87.2392
 
+# Define the Indian number formatting function
+def format_indian(value):
+    value_str = f"{float(value):.2f}"
+    parts = value_str.split('.')
+    integer_part = parts[0]
+    decimal_part = parts[1] if len(parts) > 1 else '00'
+    
+    integer_part = integer_part.replace(',', '')
+    length = len(integer_part)
+    
+    if length <= 3:
+        formatted_integer = integer_part
+    else:
+        formatted_integer = integer_part[-3:]
+        remaining = integer_part[:-3]
+        while remaining:
+            formatted_integer = remaining[-2:] + ',' + formatted_integer
+            remaining = remaining[:-2]
+        formatted_integer = remaining + ',' + formatted_integer if remaining else formatted_integer
+    
+    return f"{formatted_integer}.{decimal_part}"
+
+# Register the filter with Flask's Jinja environment
+app.jinja_env.filters['format_indian'] = format_indian
+
 def fetch_finnhub_price(symbol):
     url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     try:
@@ -74,6 +99,7 @@ def fetch_finnhub_price(symbol):
         response.raise_for_status()
         data = response.json()
         price = data.get("c")
+        logger.info(f"Fetched Finnhub price for {symbol}: {price}")
         return float(price) if price and price > 0 else INITIAL_PRICES.get(symbol, 0)
     except Exception as e:
         logger.error(f"Finnhub API error for {symbol}: {e}")
@@ -95,6 +121,7 @@ def get_nse_live_price(symbol):
         response.raise_for_status()
         data = response.json()
         price = data.get("priceInfo", {}).get("lastPrice")
+        logger.info(f"Fetched NSE price for {symbol}: {price}")
         return float(price) if price else INITIAL_PRICES.get(symbol, 0)
     except Exception as e:
         logger.error(f"NSE API error for {symbol}: {e}")
@@ -110,7 +137,9 @@ def get_mutual_fund_nav(symbol):
         response.raise_for_status()
         data = response.json()
         nav_data = data["data"][0]
-        return float(nav_data["nav"])
+        nav = float(nav_data["nav"])
+        logger.info(f"Fetched NAV for {symbol}: {nav}")
+        return nav
     except Exception as e:
         logger.error(f"MF API error for {symbol}: {e}")
         return INITIAL_PRICES.get(symbol, 0)
@@ -123,6 +152,7 @@ def get_current_price(symbol):
     elif symbol.endswith('.NS'):
         return get_nse_live_price(symbol)
     else:
+        logger.warning(f"No price fetch method for {symbol}, using initial price")
         return INITIAL_PRICES.get(symbol, 0)
 
 def fetch_investments():
@@ -130,7 +160,9 @@ def fetch_investments():
     try:
         response = requests.get(url, headers=HEADERS)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        logger.info(f"Fetched investments: {data}")
+        return data
     except Exception as e:
         logger.error(f"Supabase fetch_investments error: {e}")
         return []
@@ -141,7 +173,9 @@ def fetch_accounts():
         response = requests.get(url, headers=HEADERS)
         response.raise_for_status()
         data = response.json()
-        return data[0] if data else {"epf": 0, "bank_balance": 0}
+        result = data[0] if data else {"epf": 0, "bank_balance": 0}
+        logger.info(f"Fetched accounts: {result}")
+        return result
     except Exception as e:
         logger.error(f"Supabase fetch_accounts error: {e}")
         return {"epf": 0, "bank_balance": 0}
@@ -159,13 +193,13 @@ def store_daily_values(total_investment, total_mf, total_nse, total_sap, epf, to
         "total_liquid": total_liquid
     }
     try:
-        # Check if exists, then update or insert
         check_url = f"{url}?date=eq.{today}"
         check = requests.get(check_url, headers=HEADERS)
         if check.status_code == 200 and check.json():
             requests.patch(check_url, headers=HEADERS, json=payload)
         else:
             requests.post(url, headers=HEADERS, json=payload)
+        logger.info(f"Stored daily values for {today}")
     except Exception as e:
         logger.error(f"Supabase store_daily_values error: {e}")
 
@@ -178,7 +212,9 @@ def get_previous_day_values():
         data = response.json()
         if data:
             d = data[0]
-            return (d["total_investment"], d["total_mf"], d["total_nse"], d["total_sap"], d["epf"], d["total_liquid"])
+            result = (d["total_investment"], d["total_mf"], d["total_nse"], d["total_sap"], d["epf"], d["total_liquid"])
+            logger.info(f"Previous day values for {yesterday}: {result}")
+            return result
         return (0, 0, 0, 0, 0, 0)
     except Exception as e:
         logger.error(f"Supabase get_previous_day_values error: {e}")
@@ -190,7 +226,9 @@ def get_historical_values():
         response = requests.get(url, headers=HEADERS)
         response.raise_for_status()
         data = response.json()
-        return [[d["date"], d["total_investment"], d["total_mf"], d["total_nse"], d["total_sap"], d["epf"], d["total_liquid"]] for d in data]
+        result = [[d["date"], d["total_investment"], d["total_mf"], d["total_nse"], d["total_sap"], d["epf"], d["total_liquid"]] for d in data]
+        logger.info(f"Historical values: {result}")
+        return result
     except Exception as e:
         logger.error(f"Supabase get_historical_values error: {e}")
         return []
@@ -311,7 +349,6 @@ def add_investment():
         "purchase_date": datetime.now(IST).strftime('%Y-%m-%d')
     }
     try:
-        # Check if instrument exists
         check_url = f"{url}?instrument=eq.{instrument}"
         check = requests.get(check_url, headers=HEADERS)
         if check.status_code == 200 and check.json():
@@ -320,6 +357,7 @@ def add_investment():
             requests.patch(f"{url}?id=eq.{existing['id']}", headers=HEADERS, json={"units": new_units, "current_price": initial_price})
         else:
             requests.post(url, headers=HEADERS, json=payload)
+        logger.info(f"Added/Updated investment: {instrument}, units: {units}")
         return jsonify({'status': 'success'})
     except Exception as e:
         logger.error(f"Supabase add_investment error: {e}")
@@ -330,19 +368,19 @@ def delete_investment(id):
     url = f"{SUPABASE_URL}/investments?id=eq.{id}"
     try:
         requests.delete(url, headers=HEADERS)
+        logger.info(f"Deleted investment with id: {id}")
         return jsonify({'status': 'success'})
     except Exception as e:
         logger.error(f"Supabase delete_investment error: {e}")
         return jsonify({'status': 'error'}), 500
 
-@app.route('/update_accounts', methods=['POST'])
-def update_accounts():
+@app.route('/update_epf', methods=['POST'])
+def update_epf():
     data = request.form
     epf = float(data['epf']) if data['epf'] else 0
-    bank_balance = float(data['bank_balance']) if data['bank_balance'] else 0
     
     url = f"{SUPABASE_URL}/accounts"
-    payload = {"epf": epf, "bank_balance": bank_balance}
+    payload = {"epf": epf}
     try:
         check_url = f"{url}?select=id&limit=1"
         check = requests.get(check_url, headers=HEADERS)
@@ -350,15 +388,38 @@ def update_accounts():
             existing_id = check.json()[0]["id"]
             requests.patch(f"{url}?id=eq.{existing_id}", headers=HEADERS, json=payload)
         else:
+            payload["bank_balance"] = 0  # Default bank_balance if new record
             requests.post(url, headers=HEADERS, json=payload)
+        logger.info(f"Updated EPF: {epf}")
         return jsonify({'status': 'success'})
     except Exception as e:
-        logger.error(f"Supabase update_accounts error: {e}")
+        logger.error(f"Supabase update_epf error: {e}")
+        return jsonify({'status': 'error'}), 500
+
+@app.route('/update_bank_balance', methods=['POST'])
+def update_bank_balance():
+    data = request.form
+    bank_balance = float(data['bank_balance']) if data['bank_balance'] else 0
+    
+    url = f"{SUPABASE_URL}/accounts"
+    payload = {"bank_balance": bank_balance}
+    try:
+        check_url = f"{url}?select=id&limit=1"
+        check = requests.get(check_url, headers=HEADERS)
+        if check.status_code == 200 and check.json():
+            existing_id = check.json()[0]["id"]
+            requests.patch(f"{url}?id=eq.{existing_id}", headers=HEADERS, json=payload)
+        else:
+            payload["epf"] = 0  # Default epf if new record
+            requests.post(url, headers=HEADERS, json=payload)
+        logger.info(f"Updated bank balance: {bank_balance}")
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        logger.error(f"Supabase update_bank_balance error: {e}")
         return jsonify({'status': 'error'}), 500
 
 if __name__ == '__main__':
     try:
-        # Test Supabase connection
         test_response = requests.get(f"{SUPABASE_URL}/investments?limit=1", headers=HEADERS)
         if test_response.status_code == 200:
             logger.info("Successfully connected to Supabase!")
