@@ -26,7 +26,6 @@
             min-height: 100vh;
         }
 
-        /* Total Investment Counter Styles */
         .total-investment-counter {
             position: relative;
             width: 100%;
@@ -60,7 +59,6 @@
             letter-spacing: 1px;
         }
 
-        /* Card Styles */
         .card {
             background: rgba(0, 0, 50, 0.8);
             backdrop-filter: blur(12px);
@@ -274,7 +272,6 @@
             height: 50px;
         }
 
-        /* Instrument-specific row styles */
         tr.instrument-mf {
             background: rgba(255, 165, 0, 0.05);
         }
@@ -303,10 +300,9 @@
     </style>
 </head>
 <body>
-    <!-- Total Investment Counter -->
-    <div class="total-investment-counter">
+    <div class="total-investment-counter" id="total-investment-counter">
         <h1>Total Investment</h1>
-        <div class="value">₹{{ total_investment|round(1)|format_indian }}</div>
+        <div class="value" id="total-investment-value">₹{{ total_investment|round(1)|format_indian }}</div>
     </div>
 
     <div class="container">
@@ -387,10 +383,19 @@
                 <div class="chart-container"><canvas id="totalLiquidChart"></canvas></div>
             </div>
         </div>
+
+        <div class="card" id="monthly-chart" style="width: 800px; height: 400px; left: 300px; top: 450px;">
+            <div class="drag-handle"></div>
+            <div class="section">
+                <h2>Monthly Total Investment</h2>
+                <div style="height: 320px;">
+                    <canvas id="monthlyInvestmentChart"></canvas>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        // Draggable card functionality with position and size saving
         function makeDraggable(card) {
             const handle = card.querySelector('.drag-handle');
             let posX = parseInt(localStorage.getItem(`${card.id}-left`)) || parseInt(card.style.left) || 0;
@@ -496,6 +501,169 @@
             });
         }
 
+        function createChart(canvasId, data, label) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d[0].substring(5)),
+                    datasets: [{
+                        label: label,
+                        data: data.map(d => d[1]),
+                        borderColor: data[data.length - 1][1] >= data[data.length - 2][1] ? '#b3ffb3' : '#ff9999',
+                        borderWidth: 2,
+                        fill: false,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { display: false },
+                        y: { display: false }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false }
+                    },
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        function createMonthlyChart(canvasId, data, label) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d[0]),
+                    datasets: [{
+                        label: label,
+                        data: data.map(d => d[1]),
+                        borderColor: '#00b7ff',
+                        borderWidth: 2,
+                        fill: false,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#00b7ff',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            display: true,
+                            title: { display: true, text: 'Date', color: '#ffffff' },
+                            ticks: { color: '#ffffff' }
+                        },
+                        y: {
+                            display: true,
+                            title: { display: true, text: 'Value (₹)', color: '#ffffff' },
+                            ticks: { 
+                                color: '#ffffff',
+                                callback: function(value) {
+                                    return '₹' + value.toLocaleString('en-IN');
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: true, labels: { color: '#ffffff' } },
+                        tooltip: {
+                            enabled: true,
+                            callbacks: {
+                                label: function(context) {
+                                    return '₹' + context.parsed.y.toLocaleString('en-IN', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    });
+                                }
+                            }
+                        }
+                    },
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        function updateUI(data) {
+            document.getElementById('total-investment-value').textContent = 
+                '₹' + data.total_investment.toLocaleString('en-IN', { 
+                    minimumFractionDigits: 1, 
+                    maximumFractionDigits: 1 
+                });
+
+            const table = document.querySelector('#investmentTable');
+            const header = table.querySelector('tr:first-child');
+            table.innerHTML = '';
+            table.appendChild(header);
+
+            data.investments.forEach(inv => {
+                const row = document.createElement('tr');
+                row.classList.add('draggable');
+                if (inv.instrument.toLowerCase().includes('mf') || inv.instrument.toLowerCase().includes('mutual')) {
+                    row.classList.add('instrument-mf');
+                } else if (inv.instrument.toLowerCase().includes('nse')) {
+                    row.classList.add('instrument-nse');
+                } else if (inv.instrument.toLowerCase().includes('sap')) {
+                    row.classList.add('instrument-sap');
+                } else if (inv.instrument.toLowerCase().includes('liquid')) {
+                    row.classList.add('instrument-liquid');
+                }
+                row.dataset.id = inv.id;
+                row.innerHTML = `
+                    <td>${inv.instrument}</td>
+                    <td>${inv.units.toFixed(2)}</td>
+                    <td>₹${inv.current_price.toFixed(2)}</td>
+                    <td>₹${inv.value.toFixed(2)}</td>
+                    <td><button class="delete-btn" onclick="deleteInvestment(${inv.id})">Delete</button></td>
+                `;
+                table.appendChild(row);
+            });
+
+            const order = JSON.parse(localStorage.getItem('table-order')) || [];
+            if (order.length > 0) {
+                const rows = Array.from(table.querySelectorAll('tr.draggable'));
+                rows.sort((a, b) => order.indexOf(a.dataset.id) - order.indexOf(b.dataset.id));
+                rows.forEach(row => table.appendChild(row));
+            }
+
+            document.querySelector('.sidebar-left .section').innerHTML = `
+                <h2>Total Portfolio</h2>
+                <p><span class="label">Total Investment</span><span class="value">₹${data.total_investment.toFixed(2)}</span></p>
+                <p><span class="label">Total Mutual Funds</span><span class="value">₹${data.total_mf.toFixed(2)}</span></p>
+                <p><span class="label">Total NSE Stocks</span><span class="value">₹${data.total_nse.toFixed(2)}</span></p>
+                <p><span class="label">Total SAP</span><span class="value">₹${data.total_sap.toFixed(2)}</span></p>
+                <p><span class="label">EPF Fund</span><span class="value">₹${data.epf.toFixed(2)}</span></p>
+                <p><span class="label">Total Liquid Fund</span><span class="value">₹${data.total_liquid.toFixed(2)}</span></p>
+            `;
+
+            document.querySelector('.sidebar-right .section').innerHTML = `
+                <h2>Daily P/L (IST)</h2>
+                <p><span class="label">Total Investment</span><span class="${data.total_investment - data.prev_values[0] >= 0 ? 'profit' : 'loss'}">₹${(data.total_investment - data.prev_values[0]).toFixed(2)} ${data.prev_values[0] !== 0 ? ((data.total_investment - data.prev_values[0]) / data.prev_values[0] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_investment - data.prev_values[0] >= 0 ? '▲' : '▼'}</span></span></p>
+                <div class="chart-container"><canvas id="totalInvestmentChart"></canvas></div>
+                <p><span class="label">Mutual Funds</span><span class="${data.total_mf - data.prev_values[1] >= 0 ? 'profit' : 'loss'}">₹${(data.total_mf - data.prev_values[1]).toFixed(2)} ${data.prev_values[1] !== 0 ? ((data.total_mf - data.prev_values[1]) / data.prev_values[1] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_mf - data.prev_values[1] >= 0 ? '▲' : '▼'}</span></span></p>
+                <div class="chart-container"><canvas id="totalMfChart"></canvas></div>
+                <p><span class="label">NSE Stocks</span><span class="${data.total_nse - data.prev_values[2] >= 0 ? 'profit' : 'loss'}">₹${(data.total_nse - data.prev_values[2]).toFixed(2)} ${data.prev_values[2] !== 0 ? ((data.total_nse - data.prev_values[2]) / data.prev_values[2] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_nse - data.prev_values[2] >= 0 ? '▲' : '▼'}</span></span></p>
+                <div class="chart-container"><canvas id="totalNseChart"></canvas></div>
+                <p><span class="label">SAP</span><span class="${data.total_sap - data.prev_values[3] >= 0 ? 'profit' : 'loss'}">₹${(data.total_sap - data.prev_values[3]).toFixed(2)} ${data.prev_values[3] !== 0 ? ((data.total_sap - data.prev_values[3]) / data.prev_values[3] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_sap - data.prev_values[3] >= 0 ? '▲' : '▼'}</span></span></p>
+                <div class="chart-container"><canvas id="totalSapChart"></canvas></div>
+                <p><span class="label">EPF Fund</span><span class="${data.epf - data.prev_values[4] >= 0 ? 'profit' : 'loss'}">₹${(data.epf - data.prev_values[4]).toFixed(2)} ${data.prev_values[4] !== 0 ? ((data.epf - data.prev_values[4]) / data.prev_values[4] * 100).toFixed(2) : '0'}%<span class="arrow">${data.epf - data.prev_values[4] >= 0 ? '▲' : '▼'}</span></span></p>
+                <div class="chart-container"><canvas id="epfChart"></canvas></div>
+                <p><span class="label">Liquid Fund</span><span class="${data.total_liquid - data.prev_values[5] >= 0 ? 'profit' : 'loss'}">₹${(data.total_liquid - data.prev_values[5]).toFixed(2)} ${data.prev_values[5] !== 0 ? ((data.total_liquid - data.prev_values[5]) / data.prev_values[5] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_liquid - data.prev_values[5] >= 0 ? '▲' : '▼'}</span></span></p>
+                <div class="chart-container"><canvas id="totalLiquidChart"></canvas></div>
+            `;
+
+            const historical = data.historical_values.reverse();
+            createChart('totalInvestmentChart', historical.map(h => [h[0], h[1]]), 'Total Investment');
+            createChart('totalMfChart', historical.map(h => [h[0], h[2]]), 'Mutual Funds');
+            createChart('totalNseChart', historical.map(h => [h[0], h[3]]), 'NSE Stocks');
+            createChart('totalSapChart', historical.map(h => [h[0], h[4]]), 'SAP');
+            createChart('epfChart', historical.map(h => [h[0], h[5]]), 'EPF Fund');
+            createChart('totalLiquidChart', historical.map(h => [h[0], h[6]]), 'Liquid Fund');
+
+            createMonthlyChart('monthlyInvestmentChart', data.monthly_values, 'Total Investment (Monthly)');
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const cards = document.querySelectorAll('.card');
             cards.forEach(card => makeDraggable(card));
@@ -535,106 +703,6 @@
                 }
             };
 
-            function createChart(canvasId, data, label) {
-                const ctx = document.getElementById(canvasId).getContext('2d');
-                new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: data.map(d => d[0].substring(5)),
-                        datasets: [{
-                            label: label,
-                            data: data.map(d => d[1]),
-                            borderColor: data[data.length - 1][1] >= data[data.length - 2][1] ? '#b3ffb3' : '#ff9999',
-                            borderWidth: 2,
-                            fill: false,
-                            pointRadius: 0
-                        }]
-                    },
-                    options: {
-                        scales: {
-                            x: { display: false },
-                            y: { display: false }
-                        },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { enabled: false }
-                        },
-                        maintainAspectRatio: false
-                    }
-                });
-            }
-
-            function updateUI(data) {
-                const table = document.querySelector('#investmentTable');
-                const header = table.querySelector('tr:first-child');
-                table.innerHTML = '';
-                table.appendChild(header);
-
-                data.investments.forEach(inv => {
-                    const row = document.createElement('tr');
-                    row.classList.add('draggable');
-                    if (inv.instrument.toLowerCase().includes('mf') || inv.instrument.toLowerCase().includes('mutual')) {
-                        row.classList.add('instrument-mf');
-                    } else if (inv.instrument.toLowerCase().includes('nse')) {
-                        row.classList.add('instrument-nse');
-                    } else if (inv.instrument.toLowerCase().includes('sap')) {
-                        row.classList.add('instrument-sap');
-                    } else if (inv.instrument.toLowerCase().includes('liquid')) {
-                        row.classList.add('instrument-liquid');
-                    }
-                    row.dataset.id = inv.id;
-                    row.innerHTML = `
-                        <td>${inv.instrument}</td>
-                        <td>${inv.units.toFixed(2)}</td>
-                        <td>₹${inv.current_price.toFixed(2)}</td>
-                        <td>₹${inv.value.toFixed(2)}</td>
-                        <td><button class="delete-btn" onclick="deleteInvestment(${inv.id})">Delete</button></td>
-                    `;
-                    table.appendChild(row);
-                });
-
-                const order = JSON.parse(localStorage.getItem('table-order')) || [];
-                if (order.length > 0) {
-                    const rows = Array.from(table.querySelectorAll('tr.draggable'));
-                    rows.sort((a, b) => order.indexOf(a.dataset.id) - order.indexOf(b.dataset.id));
-                    rows.forEach(row => table.appendChild(row));
-                }
-
-                document.querySelector('.sidebar-left .section').innerHTML = `
-                    <h2>Total Portfolio</h2>
-                    <p><span class="label">Total Investment</span><span class="value">₹${data.total_investment.toFixed(2)}</span></p>
-                    <p><span class="label">Total Mutual Funds</span><span class="value">₹${data.total_mf.toFixed(2)}</span></p>
-                    <p><span class="label">Total NSE Stocks</span><span class="value">₹${data.total_nse.toFixed(2)}</span></p>
-                    <p><span class="label">Total SAP</span><span class="value">₹${data.total_sap.toFixed(2)}</span></p>
-                    <p><span class="label">EPF Fund</span><span class="value">₹${data.epf.toFixed(2)}</span></p>
-                    <p><span class="label">Total Liquid Fund</span><span class="value">₹${data.total_liquid.toFixed(2)}</span></p>
-                `;
-
-                document.querySelector('.sidebar-right .section').innerHTML = `
-                    <h2>Daily P/L (IST)</h2>
-                    <p><span class="label">Total Investment</span><span class="${data.total_investment - data.prev_values[0] >= 0 ? 'profit' : 'loss'}">₹${(data.total_investment - data.prev_values[0]).toFixed(2)} ${data.prev_values[0] !== 0 ? ((data.total_investment - data.prev_values[0]) / data.prev_values[0] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_investment - data.prev_values[0] >= 0 ? '▲' : '▼'}</span></span></p>
-                    <div class="chart-container"><canvas id="totalInvestmentChart"></canvas></div>
-                    <p><span class="label">Mutual Funds</span><span class="${data.total_mf - data.prev_values[1] >= 0 ? 'profit' : 'loss'}">₹${(data.total_mf - data.prev_values[1]).toFixed(2)} ${data.prev_values[1] !== 0 ? ((data.total_mf - data.prev_values[1]) / data.prev_values[1] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_mf - data.prev_values[1] >= 0 ? '▲' : '▼'}</span></span></p>
-                    <div class="chart-container"><canvas id="totalMfChart"></canvas></div>
-                    <p><span class="label">NSE Stocks</span><span class="${data.total_nse - data.prev_values[2] >= 0 ? 'profit' : 'loss'}">₹${(data.total_nse - data.prev_values[2]).toFixed(2)} ${data.prev_values[2] !== 0 ? ((data.total_nse - data.prev_values[2]) / data.prev_values[2] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_nse - data.prev_values[2] >= 0 ? '▲' : '▼'}</span></span></p>
-                    <div class="chart-container"><canvas id="totalNseChart"></canvas></div>
-                    <p><span class="label">SAP</span><span class="${data.total_sap - data.prev_values[3] >= 0 ? 'profit' : 'loss'}">₹${(data.total_sap - data.prev_values[3]).toFixed(2)} ${data.prev_values[3] !== 0 ? ((data.total_sap - data.prev_values[3]) / data.prev_values[3] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_sap - data.prev_values[3] >= 0 ? '▲' : '▼'}</span></span></p>
-                    <div class="chart-container"><canvas id="totalSapChart"></canvas></div>
-                    <p><span class="label">EPF Fund</span><span class="${data.epf - data.prev_values[4] >= 0 ? 'profit' : 'loss'}">₹${(data.epf - data.prev_values[4]).toFixed(2)} ${data.prev_values[4] !== 0 ? ((data.epf - data.prev_values[4]) / data.prev_values[4] * 100).toFixed(2) : '0'}%<span class="arrow">${data.epf - data.prev_values[4] >= 0 ? '▲' : '▼'}</span></span></p>
-                    <div class="chart-container"><canvas id="epfChart"></canvas></div>
-                    <p><span class="label">Liquid Fund</span><span class="${data.total_liquid - data.prev_values[5] >= 0 ? 'profit' : 'loss'}">₹${(data.total_liquid - data.prev_values[5]).toFixed(2)} ${data.prev_values[5] !== 0 ? ((data.total_liquid - data.prev_values[5]) / data.prev_values[5] * 100).toFixed(2) : '0'}%<span class="arrow">${data.total_liquid - data.prev_values[5] >= 0 ? '▲' : '▼'}</span></span></p>
-                    <div class="chart-container"><canvas id="totalLiquidChart"></canvas></div>
-                `;
-
-                const historical = data.historical_values.reverse();
-                createChart('totalInvestmentChart', historical.map(h => [h[0], h[1]]), 'Total Investment');
-                createChart('totalMfChart', historical.map(h => [h[0], h[2]]), 'Mutual Funds');
-                createChart('totalNseChart', historical.map(h => [h[0], h[3]]), 'NSE Stocks');
-                createChart('totalSapChart', historical.map(h => [h[0], h[4]]), 'SAP');
-                createChart('epfChart', historical.map(h => [h[0], h[5]]), 'EPF Fund');
-                createChart('totalLiquidChart', historical.map(h => [h[0], h[6]]), 'Liquid Fund');
-            }
-
             fetch('/get_prices')
                 .then(response => response.json())
                 .then(data => updateUI(data))
@@ -654,6 +722,7 @@
             createChart('totalSapChart', historical.map(h => [h[0], h[4]]), 'SAP');
             createChart('epfChart', historical.map(h => [h[0], h[5]]), 'EPF Fund');
             createChart('totalLiquidChart', historical.map(h => [h[0], h[6]]), 'Liquid Fund');
+            createMonthlyChart('monthlyInvestmentChart', {{ monthly_values|safe }}, 'Total Investment (Monthly)');
         });
     </script>
 </body>

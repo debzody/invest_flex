@@ -233,6 +233,20 @@ def get_historical_values():
         logger.error(f"Supabase get_historical_values error: {e}")
         return []
 
+def get_monthly_values():
+    thirty_days_ago = (datetime.now(IST) - timedelta(days=30)).strftime('%Y-%m-%d')
+    url = f"{SUPABASE_URL}/daily_values?date=gte.{thirty_days_ago}&select=*&order=date.asc"
+    try:
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        data = response.json()
+        result = [[d["date"], d["total_investment"]] for d in data]
+        logger.info(f"Monthly values: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Supabase get_monthly_values error: {e}")
+        return []
+
 @app.route('/')
 def index():
     investments = fetch_investments()
@@ -267,6 +281,7 @@ def index():
     store_daily_values(total_investment, total_mf, total_nse, total_sap, epf, total_liquid)
     prev_values = get_previous_day_values()
     historical_values = get_historical_values()
+    monthly_values = get_monthly_values()
 
     return render_template('index.html',
                          investments=investment_data,
@@ -279,7 +294,8 @@ def index():
                          bank_balance=bank_balance,
                          initial_prices=INITIAL_PRICES,
                          prev_values=prev_values,
-                         historical_values=historical_values)
+                         historical_values=historical_values,
+                         monthly_values=monthly_values)
 
 @app.route('/get_prices')
 def get_prices():
@@ -315,6 +331,7 @@ def get_prices():
     store_daily_values(total_investment, total_mf, total_nse, total_sap, epf, total_liquid)
     prev_values = get_previous_day_values()
     historical_values = get_historical_values()
+    monthly_values = get_monthly_values()
 
     return jsonify({
         'investments': investment_data,
@@ -326,7 +343,8 @@ def get_prices():
         'epf': epf,
         'bank_balance': bank_balance,
         'prev_values': prev_values,
-        'historical_values': historical_values
+        'historical_values': historical_values,
+        'monthly_values': monthly_values
     })
 
 @app.route('/add_investment', methods=['POST'])
@@ -388,7 +406,7 @@ def update_epf():
             existing_id = check.json()[0]["id"]
             requests.patch(f"{url}?id=eq.{existing_id}", headers=HEADERS, json=payload)
         else:
-            payload["bank_balance"] = 0  # Default bank_balance if new record
+            payload["bank_balance"] = 0
             requests.post(url, headers=HEADERS, json=payload)
         logger.info(f"Updated EPF: {epf}")
         return jsonify({'status': 'success'})
@@ -410,7 +428,7 @@ def update_bank_balance():
             existing_id = check.json()[0]["id"]
             requests.patch(f"{url}?id=eq.{existing_id}", headers=HEADERS, json=payload)
         else:
-            payload["epf"] = 0  # Default epf if new record
+            payload["epf"] = 0
             requests.post(url, headers=HEADERS, json=payload)
         logger.info(f"Updated bank balance: {bank_balance}")
         return jsonify({'status': 'success'})
