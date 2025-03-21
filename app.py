@@ -65,7 +65,7 @@ CURRENCY = {
     'EDEL_TECH': '₹'
 }
 
-USD_TO_INR = 87.2392
+USD_TO_INR = 86.31
 
 # Define the Indian number formatting function
 def format_indian(value):
